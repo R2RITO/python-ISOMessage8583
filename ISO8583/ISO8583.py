@@ -91,7 +91,7 @@ class ISO8583:
     # Y = large str representation
     # Z = type of the bit (B, N, A, AN, ANS, LL, LLL)
     # W = size of the information that N need to has
-    # K = type os values a, an, n, ansb, b
+    # K = type os values a, an, n, ansb, b, a_or_n
     _BITS_VALUE_TYPE[1] = ['BME', 'Bit Map Extended', 'B', 16, 'b']
     _BITS_VALUE_TYPE[2] = ['2', 'Primary account number (PAN)', 'LL', 19, 'n']
     _BITS_VALUE_TYPE[3] = ['3', 'Precessing code', 'N', 6, 'n']
@@ -150,10 +150,10 @@ class ISO8583:
     _BITS_VALUE_TYPE[46] = ['46', 'Amounts fees', 'LLL', 999, 'an']
     _BITS_VALUE_TYPE[47] = ['47', 'Additional data national', 'LLL', 999, 'an']
     _BITS_VALUE_TYPE[48] = ['48', 'Additional data private', 'LLL', 999, 'an']
-    _BITS_VALUE_TYPE[49] = ['49', 'Verification data', 'A', 3, 'a']
-    _BITS_VALUE_TYPE[50] = ['50', 'Currency code, settlement', 'AN', 3, 'an']
+    _BITS_VALUE_TYPE[49] = ['49', 'Verification data', 'A_or_N', 3, 'a_or_n']
+    _BITS_VALUE_TYPE[50] = ['50', 'Currency code, settlement', 'A_or_N', 3, 'a_or_n']
     _BITS_VALUE_TYPE[51] = [
-        '51', 'Currency code, cardholder billing', 'A', 3, 'a']
+        '51', 'Currency code, cardholder billing', 'A_or_N', 3, 'a_or_n']
     _BITS_VALUE_TYPE[52] = [
         '52', 'Personal identification number (PIN) data', 'B', 16, 'b']
     _BITS_VALUE_TYPE[53] = [
@@ -452,6 +452,9 @@ class ISO8583:
         if self.getBitType(bit) == 'B':
             self.__setBitTypeB(bit, value)
 
+        if self.getBitType(bit) == 'A_or_N':
+            self.__setBitTypeA_or_N(bit, value)
+
         # Continuation bit?
         if bit > 64:
             # need to set bit 1 of first "bit" in bitmap
@@ -670,6 +673,8 @@ class ISO8583:
 
         size = "%s" % len(value)
 
+        self.__checkBitTypeValidity(bit, value)
+
         self.BITMAP_VALUES[bit] = "%s%s" % (size.zfill(2), value)
 
     ################################################################################################
@@ -698,6 +703,8 @@ class ISO8583:
 
         size = "%s" % len(value)
 
+        self.__checkBitTypeValidity(bit, value)
+
         self.BITMAP_VALUES[bit] = "%s%s" % (size.zfill(3), value)
 
     ################################################################################################
@@ -709,6 +716,35 @@ class ISO8583:
         It complete the size of the bit with a default value
         Example: pack.setBit(3,'30000') -> Bit 3 is a N type, so this bit, in ASCII form need to has size = 6 (ISO especification) so the value 30000 size = 5 need to receive more "1" number.
             In this case, will be "0" in the left. In the package, the bit will be sent like '030000'
+        @param: bit -> bit to be setted
+        @param: value -> value to be setted
+        @raise: ValueToLarge Exception
+        It's a internal method, so don't call!
+        """
+
+        value = "%s" % value
+
+        if len(value) > self.getBitLimit(bit):
+            value = value[0:self.getBitLimit(bit)]
+            raise ValueToLarge('Error: value up to size! Bit[%s] of type %s limit size = %s' % (
+                bit, self.getBitType(bit), self.getBitLimit(bit)))
+
+        self.__checkBitTypeValidity(bit, value)
+
+        self.BITMAP_VALUES[bit] = value.zfill(self.getBitLimit(bit))
+
+    ################################################################################################
+
+    ################################################################################################
+    # Set of type A_or_N,
+    def __setBitTypeA_or_N(self, bit, value):
+        """Method that set a bit with value in form A_or_N
+        It complete the size of the bit with a default value
+        Example: pack.setBit(49,'20') -> Bit 49 is a A_or_N type, so this bit, 
+                 in ASCII form need to has size = 3 (ISO especification) so the 
+                 value 20 size = 2 need to receive "1" more number.
+                 In this case, will be "0" in the left. In the package, 
+                 the bit will be sent like '020'
         @param: bit -> bit to be setted
         @param: value -> value to be setted
         @raise: ValueToLarge Exception
@@ -1053,6 +1089,11 @@ class ISO8583:
         elif bitType == 'ns':
             if not all(not x.isalpha() for x in value):
                 self.__raiseValueTypeError(bit, value)
+        elif bitType == 'a_or_n':
+            # It has to be either alpha or numeric.
+            if not ( (all(x.isspace() or x.isalpha() for x in value)) or\
+                     (value.isdecimal()) ):
+                self.__raiseValueTypeError(bit, value)
 
         # No exceptions raised, return
         return True
@@ -1138,7 +1179,7 @@ class ISO8583:
                 # offset += valueSize + 4
 
                 if bitType == 'N' or bitType == 'A' or bitType == 'ANS' or \
-                   bitType == 'B' or bitType == 'AN':
+                   bitType == 'B' or bitType == 'AN' or bitType == 'A_or_N':
 
                     value = strWithoutMtiBitmap[
                                 offset:self.getBitLimit(cont) + offset
@@ -1298,6 +1339,37 @@ class ISO8583:
             return value
         else:
             raise BitNotSet("Bit number %s was not set!" % bit)
+
+
+    ################################################################################################
+
+    ################################################################################################
+    # Method that returns the value of the bit
+    def getBitValue(self, bit):
+        """Return the value of the bit without 
+        @param: bit -> the number of the bit that you want the value
+        @raise: BitInexistent Exception, BitNotSet Exception
+        """
+
+        # Get the raw bit
+        value = self.getBit(bit)
+        return_value = None
+
+        # Get the bit's type
+        bit_type = self.getBitType(bit)
+
+        if bit_type == 'L':
+            return_value = value[1:]
+        elif bit_type == 'LL':
+            return_value = value[2:]
+        elif bit_type == 'LLL':
+            return_value = value[3:]
+        elif bit_type in ['N', 'B', 'A', 'AN', 'ANS']:
+            return_value = value
+
+        return return_value
+
+
 
     ################################################################################################
 
