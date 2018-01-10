@@ -27,6 +27,7 @@ if sys.version_info >= (3,):
 else:
     from ISOErrors import *
 import struct
+import re
 
 
 class ISO8583:
@@ -1012,14 +1013,15 @@ class ISO8583:
 
     ################################################################################################
 
-    def __raiseValueTypeError(self, bit):
+    def __raiseValueTypeError(self, bit, value):
         """ Raise a type error exception
             @param: bit -> bit that caused the error
             @raises: InvalidValueType -> exception with message according to
                      type error
         """
         raise InvalidValueType(
-            'Error: value of type %s has invalid type' % (self.getBitType(bit))
+            'Error: Bit %s of type %s and value %s has invalid type' %\
+            (bit, self.getBitType(bit), value)
         )
 
     ################################################################################################
@@ -1038,13 +1040,19 @@ class ISO8583:
 
         if bitType == 'a':
             if not all(x.isspace() or x.isalpha() for x in value):
-                self.__raiseValueTypeError(bit)
+                self.__raiseValueTypeError(bit, value)
         elif bitType == 'n':
             if not value.isdecimal():
-                self.__raiseValueTypeError(bit)
+                self.__raiseValueTypeError(bit, value)
         elif bitType == 'an':
             if not all(x.isspace() or x.isalnum() for x in value):
-                self.__raiseValueTypeError(bit)
+                self.__raiseValueTypeError(bit, value)
+        elif bitType == 'as':
+            if not all(not x.isdecimal() for x in value):
+                self.__raiseValueTypeError(bit, value)
+        elif bitType == 'ns':
+            if not all(not x.isalpha() for x in value):
+                self.__raiseValueTypeError(bit, value)
 
         # No exceptions raised, return
         return True
@@ -1081,8 +1089,13 @@ class ISO8583:
                         print('This bit is larger thant the specification.')
                         # raise ValueToLarge("This bit is larger than the especification!")
 
-                    self.BITMAP_VALUES[cont] = strWithoutMtiBitmap[offset:offset + 2] + strWithoutMtiBitmap[
-                        offset + 2:offset + 2 + valueSize]
+                    value = strWithoutMtiBitmap[offset:offset + 2] + \
+                            strWithoutMtiBitmap[offset + 2:\
+                                                offset + 2 + valueSize]
+
+                    self.__checkBitTypeValidity(cont, value)
+
+                    self.BITMAP_VALUES[cont] = value
 
                     if self.DEBUG is True:
                         print('\tSetting bit %s value %s' %
@@ -1102,8 +1115,14 @@ class ISO8583:
                     if valueSize > self.getBitLimit(cont):
                         raise ValueToLarge(
                             "This bit is larger than the especification!")
-                    self.BITMAP_VALUES[cont] = strWithoutMtiBitmap[offset:offset + 3] + strWithoutMtiBitmap[
-                        offset + 3:offset + 3 + valueSize]
+
+                    value = strWithoutMtiBitmap[offset:offset + 3] + \
+                            strWithoutMtiBitmap[offset + 3:\
+                                                offset + 3 + valueSize]
+
+                    self.__checkBitTypeValidity(cont, value)
+
+                    self.BITMAP_VALUES[cont] = value
 
                     if self.DEBUG is True:
                         print('\tSetting bit %s value %s' %
