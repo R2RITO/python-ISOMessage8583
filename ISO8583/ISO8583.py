@@ -1737,8 +1737,8 @@ class ISO8583:
                 _TMP = {}
                 _TMP['bit'] = "%d" % cont
                 _TMP['type'] = self.getBitType(cont)
-                _TMP['value(raw)'] = self.BITMAP_VALUES[cont]
-                _TMP['value(decoded)'] = self.getBit(cont)
+                _TMP['value_raw'] = self.BITMAP_VALUES[cont]
+                _TMP['value'] = self.getBit(cont)
                 ret.append(_TMP)
         return ret
 
