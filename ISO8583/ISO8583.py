@@ -30,6 +30,8 @@ import struct
 import binascii
 import ebcdic
 import time
+import re
+
 
 class ISO8583:
     """Main Class to work with ISO8583 packages.
@@ -86,14 +88,14 @@ class ISO8583:
     # ISO8583 constants
     _BITS_VALUE_TYPE = {}
     # Every _BITS_VALUE_TYPE has:
-    # _BITS_VALUE_TYPE[N] = [ X, Y, Z, W, K, L ]
+    # _BITS_VALUE_TYPE[N] = [ X,Y, Z, W,K]
     # N = bitnumber
     # X = smallStr representation of the bit meaning
     # Y = large str representation
     # Z = type of the bit (B, N, A, AN, ANS, LL, LLL, LLLLLL)
     # V = format of indicator length indicator LL, LLL, etc (-, A[scii], B[CD])
     # W = size of the information that N need to has
-    # K = type of values a, an, n, ans, b
+    # K = type of values a, an, n, ans, b, a_or_n
     # L = format of the data (A[scii], E[bcdic], P[acked])
     _BITS_VALUE_TYPE[1] = ['BME', 'Bit Map Extended', 'B', '-', 16, 'b', 'A']
     _BITS_VALUE_TYPE[2] = ['2', 'Primary account number (PAN)', 'LL', 'A', 19, 'n', 'A']
@@ -153,10 +155,10 @@ class ISO8583:
     _BITS_VALUE_TYPE[46] = ['46', 'Amounts fees', 'LLL', 'A', 999, 'ans', 'A']
     _BITS_VALUE_TYPE[47] = ['47', 'Additional data national', 'LLL', 'A', 999, 'ans', 'A']
     _BITS_VALUE_TYPE[48] = ['48', 'Additional data private', 'LLL', 'A', 999, 'ans', 'A']
-    _BITS_VALUE_TYPE[49] = ['49', 'Currency code, transaction', 'AN', '-', 3, 'an', 'A']
-    _BITS_VALUE_TYPE[50] = ['50', 'Currency code, settlement', 'AN', '-', 3, 'an', 'A']
+    _BITS_VALUE_TYPE[49] = ['49', 'Currency code, transaction', 'A_or_N', '-', 3, 'a_or_n', 'A']
+    _BITS_VALUE_TYPE[50] = ['50', 'Currency code, settlement', 'A_or_N', '-', 3, 'a_or_n', 'A']
     _BITS_VALUE_TYPE[51] = [
-        '51', 'Currency code, cardholder billing', 'AN', '-', 3, 'an', 'A']
+        '51', 'Currency code, cardholder billing', 'A_or_N', '-', 3, 'a_or_n', 'A']
     _BITS_VALUE_TYPE[52] = [
         '52', 'Personal identification number (PIN) data', 'B', '-', 16, 'b', 'A']
     _BITS_VALUE_TYPE[53] = [
@@ -382,7 +384,7 @@ class ISO8583:
     ################################################################################################
 
     ################################################################################################
-    # Set the header 
+    # Set the header
     def setHdr(self, hdr):
         """Method that sets the optional header byte string
         """
@@ -413,7 +415,7 @@ class ISO8583:
     ################################################################################################
 
     ################################################################################################
-    # Get the header 
+    # Get the header
     def getHdr(self):
         """Method that gets the optional header byte string
         """
@@ -606,6 +608,9 @@ class ISO8583:
 
         if self.getBitType(bit) == 'B':
             self.__setBitTypeB(bit, value)
+
+        if self.getBitType(bit) == 'A_or_N':
+            self.__setBitTypeA_or_N(bit, value)
 
         # Continuation bit?
         if bit > 64:
@@ -864,6 +869,8 @@ class ISO8583:
         data = self.__formatValue(bit, value)
         lenform = self.getBitLenForm(bit)
 
+        self.__checkBitTypeValidity(bit, value)
+
         if lenform == 'A':
             self.BITMAP_VALUES[bit] = size.zfill(2).encode() + data
         elif lenform == 'E':
@@ -872,6 +879,7 @@ class ISO8583:
             self.BITMAP_VALUES[bit] = self.__IntToLLPack(len(value)) + data
         else:
             self.BITMAP_VALUES[bit] = self.__IntToLLBCD(len(value)) + data
+
 
     ################################################################################################
 
@@ -900,6 +908,8 @@ class ISO8583:
         size = "%s" % len(value)
         data = self.__formatValue(bit, value)
         lenform = self.getBitLenForm(bit)
+
+        self.__checkBitTypeValidity(bit, value)
 
         if lenform == 'A':
             self.BITMAP_VALUES[bit] = size.zfill(3).encode() + data
@@ -938,6 +948,8 @@ class ISO8583:
         data = self.__formatValue(bit, value)
         lenform = self.getBitLenForm(bit)
 
+        self.__checkBitTypeValidity(bit, value)
+
         if lenform == 'A':
             self.BITMAP_VALUES[bit] = size.zfill(6).encode() + data
         elif lenform == 'E':
@@ -969,7 +981,7 @@ class ISO8583:
             raise ValueTooLarge('Error: value up to size! Bit[%s] of type %s limit size = %s' % (
                 bit, self.getBitType(bit), self.getBitLimit(bit)))
 
-        #self.__checkBitTypeValidity(bit, value)
+        self.__checkBitTypeValidity(bit, value)
 
         data_form = self.getBitFormat(bit)
 
@@ -977,7 +989,44 @@ class ISO8583:
             self.BITMAP_VALUES[bit] = value.zfill(self.getBitLimit(bit)).encode()
         elif data_form == "E":
             self.BITMAP_VALUES[bit] = value.zfill(self.getBitLimit(bit)).encode('cp1148')
-        else: # Packed data - make sure that it's left zero-filled to the correct length- a multiple of 2
+        else:  # Packed data - make sure that it's left zero-filled to the correct length- a multiple of 2
+            unpacked_len = self.__getUnpackedLen(self.getBitLimit(bit))
+            self.BITMAP_VALUES[bit] = binascii.unhexlify(value.zfill(unpacked_len))
+
+    ################################################################################################
+
+    ################################################################################################
+    # Set of type A_or_N,
+    def __setBitTypeA_or_N(self, bit, value):
+        """Method that set a bit with value in form A_or_N
+        It complete the size of the bit with a default value
+        Example: pack.setBit(49,'20') -> Bit 49 is a A_or_N type, so this bit,
+                 in ASCII form need to has size = 3 (ISO especification) so the
+                 value 20 size = 2 need to receive "1" more number.
+                 In this case, will be "0" in the left. In the package,
+                 the bit will be sent like '020'
+        @param: bit -> bit to be setted
+        @param: value -> value to be setted
+        @raise: ValueToLarge Exception
+        It's a internal method, so don't call!
+        """
+
+        value = "%s" % value
+
+        if len(value) > self.getBitLimit(bit):
+            value = value[0:self.getBitLimit(bit)]
+            raise ValueTooLarge('Error: value up to size! Bit[%s] of type %s limit size = %s' % (
+                bit, self.getBitType(bit), self.getBitLimit(bit)))
+
+        self.__checkBitTypeValidity(bit, value)
+
+        data_form = self.getBitFormat(bit)
+
+        if data_form == "A":
+            self.BITMAP_VALUES[bit] = value.zfill(self.getBitLimit(bit)).encode()
+        elif data_form == "E":
+            self.BITMAP_VALUES[bit] = value.zfill(self.getBitLimit(bit)).encode('cp1148')
+        else:  # Packed data - make sure that it's left zero-filled to the correct length- a multiple of 2
             unpacked_len = self.__getUnpackedLen(self.getBitLimit(bit))
             self.BITMAP_VALUES[bit] = binascii.unhexlify(value.zfill(unpacked_len))
 
@@ -1003,7 +1052,7 @@ class ISO8583:
             raise ValueTooLarge('Error: value up to size! Bit[%s] of type %s limit size = %s' % (
                 bit, self.getBitType(bit), self.getBitLimit(bit)))
 
-        #self.__checkBitTypeValidity(bit, value)
+        self.__checkBitTypeValidity(bit, value)
 
         data_form = self.getBitFormat(bit)
 
@@ -1034,7 +1083,7 @@ class ISO8583:
             raise ValueTooLarge('Error: value up to size! Bit[%s] of type %s limit size = %s' % (
                 bit, self.getBitType(bit), self.getBitLimit(bit)))
 
-        #self.__checkBitTypeValidity(bit, value)
+        self.__checkBitTypeValidity(bit, value)
 
         data_form = self.getBitFormat(bit)
 
@@ -1097,7 +1146,7 @@ class ISO8583:
             raise ValueTooLarge('Error: value up to size! Bit[%s] of type %s limit size = %s' % (
                 bit, self.getBitType(bit), self.getBitLimit(bit)))
 
-        #self.__checkBitTypeValidity(bit, value)
+        self.__checkBitTypeValidity(bit, value)
 
         data_form = self.getBitFormat(bit)
 
@@ -1320,15 +1369,22 @@ class ISO8583:
 
     ################################################################################################
 
-    def __raiseValueTypeError(self, bit):
+    def __raiseValueTypeError(self, bit, value=None):
         """ Raise a type error exception
             @param: bit -> bit that caused the error
             @raises: InvalidValueType -> exception with message according to
                      type error
         """
-        raise InvalidValueType(
-            'Error: value of type %s has invalid type' % (self.getBitType(bit))
-        )
+        if value:
+            msg = (
+                "Error: Bit {bit} of type {type} and"
+                " value {value} has invalid type".format(
+                    bit=bit, type=self.getBitType(bit), value=value))
+        else:
+            msg = "Error: value of type {type} has invalid type".format(
+                type=self.getBitType(bit))
+
+        raise InvalidValueType(msg)
 
     ################################################################################################
 
@@ -1346,13 +1402,24 @@ class ISO8583:
 
         if bitType == 'a':
             if not all(x.isspace() or x.isalpha() for x in value):
-                self.__raiseValueTypeError(bit)
+                self.__raiseValueTypeError(bit, value)
         elif bitType == 'n':
             if not value.isdecimal():
-                self.__raiseValueTypeError(bit)
+                self.__raiseValueTypeError(bit, value)
         elif bitType == 'an':
             if not all(x.isspace() or x.isalnum() for x in value):
-                self.__raiseValueTypeError(bit)
+                self.__raiseValueTypeError(bit, value)
+        elif bitType == 'as':
+            if not all(not x.isdecimal() for x in value):
+                self.__raiseValueTypeError(bit, value)
+        elif bitType == 'ns':
+            if not all(not x.isalpha() for x in value):
+                self.__raiseValueTypeError(bit, value)
+        elif bitType == 'a_or_n':
+            # It has to be either alpha or numeric.
+            if not ( (all(x.isspace() or x.isalpha() for x in value)) or\
+                     (value.isdecimal()) ):
+                self.__raiseValueTypeError(bit, value)
 
         # No exceptions raised, return
         return True
@@ -1414,7 +1481,7 @@ class ISO8583:
                         print('\tSetting bit %s value %s' %
                               (cont, self.BITMAP_VALUES[cont]))
 
-                    offset += modvalueSize + lenoffset 
+                    offset += modvalueSize + lenoffset
 
                 elif bitType == 'LLL':
                     if lenform == 'A':
@@ -1494,7 +1561,7 @@ class ISO8583:
                 # offset += valueSize + 4
 
                 elif bitType == 'N' or bitType == 'A' or bitType == 'ANS' or \
-                   bitType == 'B' or bitType == 'AN':
+                   bitType == 'B' or bitType == 'AN' or bitType == 'A_or_N':
 
                     origvalueSize = self.getBitLimit(cont)
 
@@ -1817,6 +1884,37 @@ class ISO8583:
         else:
             raise BitNotSet("Bit number %s was not set!" % bit)
 
+
+    ################################################################################################
+
+    ################################################################################################
+    # Method that returns the value of the bit
+    def getBitValue(self, bit):
+        """Return the value of the bit without
+        @param: bit -> the number of the bit that you want the value
+        @raise: BitInexistent Exception, BitNotSet Exception
+        """
+
+        # Get the raw bit
+        value = self.getBit(bit)
+        return_value = None
+
+        # Get the bit's type
+        bit_type = self.getBitType(bit)
+
+        if bit_type == 'L':
+            return_value = value[1:]
+        elif bit_type == 'LL':
+            return_value = value[2:]
+        elif bit_type == 'LLL':
+            return_value = value[3:]
+        elif bit_type in ['N', 'B', 'A', 'AN', 'ANS']:
+            return_value = value
+
+        return return_value
+
+
+
     ################################################################################################
 
     ################################################################################################
@@ -1884,7 +1982,7 @@ class ISO8583:
         @raise: InvalidMTI Exception
         """
 
-        netIso = "".encode()
+        netIso = ""
         asciiIso = self.getRawIso()
 
         if bigEndian:
@@ -1896,7 +1994,7 @@ class ISO8583:
             if self.DEBUG is True:
                 print('Pack Little-endian')
 
-        netIso += asciiIso
+        netIso += asciiIso.encode('ascii')
 
         return netIso
 
@@ -1934,18 +2032,8 @@ class ISO8583:
             @raise: InvalidIso8583 Exception
         """
 
-        if self.MTI_format == 'A' or self.MTI_format == 'E':
-            mti_len = 4
-        else:
-            mti_len = 2
-
-        if self.BITMAP_format == 'A' or self.BITMAP_format == 'E':
-            bitmap_min_size = 16
-        else:
-            bitmap_min_size = 8
-
-        if len(iso) < (mti_len + bitmap_min_size + 4):
-            raise InvalidIso8583('This is not a valid iso!! Invalid Size')
+        if len(iso) < 24:
+            raise InvalidIso8583('This is not a valid iso!!Invalid Size')
 
         size = iso[0:2]
         if bigEndian:
@@ -1959,7 +2047,7 @@ class ISO8583:
 
         if len(iso) != (size[0] + 2):
             raise InvalidIso8583(
-                'This is not a valid iso!! The ISO8583 ASCII(%s) is less than the size %s!' % (len(iso[2:]), size[0]))
+                'This is not a valid iso!!The ISO8583 ASCII(%s) is less than the size %s!' % (len(iso[2:]), size[0]))
 
         self.setIsoContent(iso[2:])
 
