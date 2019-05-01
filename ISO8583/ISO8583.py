@@ -1982,7 +1982,7 @@ class ISO8583:
         @raise: InvalidMTI Exception
         """
 
-        netIso = ""
+        netIso = "".encode()
         asciiIso = self.getRawIso()
 
         if bigEndian:
@@ -1994,7 +1994,7 @@ class ISO8583:
             if self.DEBUG is True:
                 print('Pack Little-endian')
 
-        netIso += asciiIso.encode('ascii')
+        netIso += asciiIso
 
         return netIso
 
@@ -2032,8 +2032,18 @@ class ISO8583:
             @raise: InvalidIso8583 Exception
         """
 
-        if len(iso) < 24:
-            raise InvalidIso8583('This is not a valid iso!!Invalid Size')
+        if self.MTI_format == 'A' or self.MTI_format == 'E':
+            mti_len = 4
+        else:
+            mti_len = 2
+
+        if self.BITMAP_format == 'A' or self.BITMAP_format == 'E':
+            bitmap_min_size = 16
+        else:
+            bitmap_min_size = 8
+
+        if len(iso) < (mti_len + bitmap_min_size + 4):
+            raise InvalidIso8583('This is not a valid iso!! Invalid Size')
 
         size = iso[0:2]
         if bigEndian:
@@ -2047,7 +2057,7 @@ class ISO8583:
 
         if len(iso) != (size[0] + 2):
             raise InvalidIso8583(
-                'This is not a valid iso!!The ISO8583 ASCII(%s) is less than the size %s!' % (len(iso[2:]), size[0]))
+                'This is not a valid iso!! The ISO8583 ASCII(%s) is less than the size %s!' % (len(iso[2:]), size[0]))
 
         self.setIsoContent(iso[2:])
 
