@@ -18,7 +18,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 __author__ = 'Igor Vitorio Custodio <igorvc@vulcanno.com.br>'
-__version__ = '1.4'
+__version__ = '1.5'
 __licence__ = 'GPL V3'
 
 import sys
@@ -88,11 +88,11 @@ class ISO8583:
     # ISO8583 constants
     _BITS_VALUE_TYPE = {}
     # Every _BITS_VALUE_TYPE has:
-    # _BITS_VALUE_TYPE[N] = [ X,Y, Z, W,K]
+    # _BITS_VALUE_TYPE[N] = [X, Y, Z, V, W, K, L]
     # N = bitnumber
     # X = smallStr representation of the bit meaning
     # Y = large str representation
-    # Z = type of the bit (B, N, A, AN, ANS, LL, LLL, LLLLLL)
+    # Z = type of the bit (B, N, A, AN, ANS, A_or_N, LL, LLL, LLLLLL)
     # V = format of indicator length indicator LL, LLL, etc (-, A[scii], B[CD])
     # W = size of the information that N need to has
     # K = type of values a, an, n, ans, b, a_or_n
@@ -138,7 +138,7 @@ class ISO8583:
     _BITS_VALUE_TYPE[33] = [
         '33', 'Forwarding institution identification code', 'LL', 'A', 11, 'n', 'A']
     _BITS_VALUE_TYPE[34] = ['34', 'Primary Account Number, extended', 'LL', 'A', 28, 'n', 'A']
-    _BITS_VALUE_TYPE[35] = ['35', 'Track 2 data', 'LL', 'A', 37, 'n', 'A']
+    _BITS_VALUE_TYPE[35] = ['35', 'Track 2 data', 'LL', 'A', 37, 'ans', 'A']
     _BITS_VALUE_TYPE[36] = ['36', 'Track 3 data', 'LLL', 'A', 104, 'n', 'A']
     _BITS_VALUE_TYPE[37] = ['37', 'Retrieval reference number', 'N', '-', 12, 'an', 'A']
     _BITS_VALUE_TYPE[38] = ['38', 'Approval code', 'N', '-', 6, 'an', 'A']
@@ -1399,27 +1399,33 @@ class ISO8583:
         """
 
         bitType = self.getBitValueType(bit)
+        bitFormat = self.getBitFormat(bit)
 
-        if bitType == 'a':
-            if not all(x.isspace() or x.isalpha() for x in value):
-                self.__raiseValueTypeError(bit, value)
-        elif bitType == 'n':
-            if not value.isdecimal():
-                self.__raiseValueTypeError(bit, value)
-        elif bitType == 'an':
-            if not all(x.isspace() or x.isalnum() for x in value):
-                self.__raiseValueTypeError(bit, value)
-        elif bitType == 'as':
-            if not all(not x.isdecimal() for x in value):
-                self.__raiseValueTypeError(bit, value)
-        elif bitType == 'ns':
-            if not all(not x.isalpha() for x in value):
-                self.__raiseValueTypeError(bit, value)
-        elif bitType == 'a_or_n':
-            # It has to be either alpha or numeric.
-            if not ( (all(x.isspace() or x.isalpha() for x in value)) or\
-                     (value.isdecimal()) ):
-                self.__raiseValueTypeError(bit, value)
+        if bitFormat == 'A':
+            if type(value) == bytes:
+                value = value.decode('ascii')
+
+            # ASCII format, able to decode and use str methods to validate
+            if bitType == 'a':
+                if not all(x.isspace() or x.isalpha() for x in value):
+                    self.__raiseValueTypeError(bit, value)
+            elif bitType == 'n':
+                if not value.isdecimal():
+                    self.__raiseValueTypeError(bit, value)
+            elif bitType == 'an':
+                if not all(x.isspace() or x.isalnum() for x in value):
+                    self.__raiseValueTypeError(bit, value)
+            elif bitType == 'as':
+                if not all(not x.isdecimal() for x in value):
+                    self.__raiseValueTypeError(bit, value)
+            elif bitType == 'ns':
+                if not all(not x.isalpha() for x in value):
+                    self.__raiseValueTypeError(bit, value)
+            elif bitType == 'a_or_n':
+                # It has to be either alpha or numeric.
+                if not ( (all(x.isspace() or x.isalpha() for x in value)) or
+                         (value.isdecimal()) ):
+                    self.__raiseValueTypeError(bit, value)
 
         # No exceptions raised, return
         return True
@@ -1432,6 +1438,8 @@ class ISO8583:
         """Method that receive a string (ASCII) without MTI and Bitmaps (first and second), understand it and remove the bits values
         @param: str -> with all bits presents whithout MTI and bitmap
         It's a internal method, so don't call!
+        @raises: InvalidValueType -> exception with message according to
+                 type error
         """
 
         if self.DEBUG is True:
@@ -1474,8 +1482,12 @@ class ISO8583:
                     else: # ASCII and EBCDIC have the same length
                         modvalueSize = valueSize
 
-                    self.BITMAP_VALUES[cont] = strWithoutMtiBitmap[offset:offset+lenoffset] + strWithoutMtiBitmap[
-                        offset+lenoffset:offset+lenoffset+ modvalueSize]
+                    bit_value = (strWithoutMtiBitmap[offset:offset+lenoffset] +
+                                 strWithoutMtiBitmap[offset+lenoffset:offset+
+                                                     lenoffset+modvalueSize]
+                                 )
+                    self.__checkBitTypeValidity(cont, bit_value)
+                    self.BITMAP_VALUES[cont] = bit_value
 
                     if self.DEBUG is True:
                         print('\tSetting bit %s value %s' %
@@ -1509,8 +1521,12 @@ class ISO8583:
                     else:
                         modvalueSize = valueSize
 
-                    self.BITMAP_VALUES[cont] = strWithoutMtiBitmap[offset:offset+lenoffset] + strWithoutMtiBitmap[
-                        offset+lenoffset:offset+lenoffset+modvalueSize]
+                    bit_value = (strWithoutMtiBitmap[offset:offset+lenoffset] +
+                                 strWithoutMtiBitmap[offset+lenoffset:offset+
+                                                     lenoffset+modvalueSize]
+                                 )
+                    self.__checkBitTypeValidity(cont, bit_value)
+                    self.BITMAP_VALUES[cont] = bit_value
 
                     if self.DEBUG is True:
                         print('\tSetting bit %s value %s' %
@@ -1544,8 +1560,12 @@ class ISO8583:
                     else:
                         modvalueSize = valueSize
 
-                    self.BITMAP_VALUES[cont] = strWithoutMtiBitmap[offset:offset+lenoffset] + strWithoutMtiBitmap[
-                        offset+lenoffset:offset+lenoffset+modvalueSize]
+                    bit_value = (strWithoutMtiBitmap[offset:offset+lenoffset] +
+                                 strWithoutMtiBitmap[offset+lenoffset:offset+
+                                                     lenoffset+modvalueSize]
+                                 )
+                    self.__checkBitTypeValidity(cont, bit_value)
+                    self.BITMAP_VALUES[cont] = bit_value
 
                     if self.DEBUG is True:
                         print('\tSetting bit %s value %s' %
@@ -1570,10 +1590,10 @@ class ISO8583:
                     else:
                         modvalueSize = origvalueSize
 
-                    value = strWithoutMtiBitmap[offset:modvalueSize + offset]
+                    bit_value = strWithoutMtiBitmap[offset:modvalueSize + offset]
 
-                    #self.__checkBitTypeValidity(cont, value)
-                    self.BITMAP_VALUES[cont] = value
+                    self.__checkBitTypeValidity(cont, bit_value)
+                    self.BITMAP_VALUES[cont] = bit_value
 
                     if self.DEBUG is True:
                         print('\tSetting bit %s value %s' %
@@ -1892,7 +1912,7 @@ class ISO8583:
     def getBitValue(self, bit):
         """Return the value of the bit without
         @param: bit -> the number of the bit that you want the value
-        @raise: BitInexistent Exception, BitNotSet Exception
+        @raise: BitNonexistent Exception, BitNotSet Exception
         """
 
         # Get the raw bit
