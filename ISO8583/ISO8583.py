@@ -870,7 +870,7 @@ class ISO8583:
         lenform = self.getBitLenForm(bit)
 
         self.__check_bit_type_validity(bit, value)
-        self.__check_bit_data_length(bit, value)
+        self.__check_bit_data_length(bit, value, size)
 
         if lenform == 'A':
             self.BITMAP_VALUES[bit] = size.zfill(2).encode() + data
@@ -911,7 +911,7 @@ class ISO8583:
         lenform = self.getBitLenForm(bit)
 
         self.__check_bit_type_validity(bit, value)
-        self.__check_bit_data_length(bit, value)
+        self.__check_bit_data_length(bit, value, size)
 
         if lenform == 'A':
             self.BITMAP_VALUES[bit] = size.zfill(3).encode() + data
@@ -951,7 +951,7 @@ class ISO8583:
         lenform = self.getBitLenForm(bit)
 
         self.__check_bit_type_validity(bit, value)
-        self.__check_bit_data_length(bit, value)
+        self.__check_bit_data_length(bit, value, size)
 
         if lenform == 'A':
             self.BITMAP_VALUES[bit] = size.zfill(6).encode() + data
@@ -1433,39 +1433,23 @@ class ISO8583:
         # No exceptions raised, return
         return True
 
-    def __check_bit_data_length(self, bit, value):
+    def __check_bit_data_length(self, bit, value, size):
         """
         Verify the data size of the data in the LL values, the data should
         match the size given by the first bits.
         :param int bit: The bit to validate
         :param str value: The value of the bit
+        :param int size: The size of the field to set
         :raises ValueTooLarge: when the value does not match the size
         """
-        bit_type = self.getBitType(bit)
-        len_type = self.getBitLenForm(bit) # Should be 'A'
-        data_type = self.getBitFormat(bit) # Should be 'A'
-
-        index = None
-
-        if (len_type == 'A') and (data_type == 'A'):
-            # Able to parse the length and data as str
-            if bit_type == 'LL':
-                index = 2
-            elif bit_type == 'LLL':
-                index = 3
-            elif bit_type == 'LLLLLL':
-                index = 6
-
-            if index:
-                # Verify length of the incoming value
-                data_length = int(value[:index])
-                if len(value[index:]) != data_length:
-                    raise ValueTooLarge(
-                        'Error: Bit {bit} has a header size of {size} '
-                        'but a data size of {data_size}'.format(
-                            bit=bit,
-                            size=data_length,
-                            data_size=len(value[index:])))
+        size = int(size)
+        if len(value) != size:
+            raise ValueTooLarge(
+                'Error: Bit {bit} has a header size of {size} '
+                'but a data size of {data_size}'.format(
+                    bit=bit,
+                    size=size,
+                    data_size=len(value)))
 
         return True
 
@@ -1522,12 +1506,13 @@ class ISO8583:
                     else: # ASCII and EBCDIC have the same length
                         modvalueSize = valueSize
 
-                    bit_value = (strWithoutMtiBitmap[offset:offset+lenoffset] +
-                                 strWithoutMtiBitmap[offset+lenoffset:offset+
-                                                     lenoffset+modvalueSize]
-                                 )
-                    self.__check_bit_type_validity(cont, bit_value)
-                    self.__check_bit_data_length(cont, bit_value)
+                    data_size = strWithoutMtiBitmap[offset:offset+lenoffset]
+                    data_value = strWithoutMtiBitmap[
+                        offset + lenoffset:offset + lenoffset +
+                        modvalueSize]
+                    bit_value = data_size + data_value
+                    self.__check_bit_type_validity(cont, data_value)
+                    self.__check_bit_data_length(cont, data_value, data_size)
 
                     self.BITMAP_VALUES[cont] = bit_value
 
@@ -1563,12 +1548,12 @@ class ISO8583:
                     else:
                         modvalueSize = valueSize
 
-                    bit_value = (strWithoutMtiBitmap[offset:offset+lenoffset] +
-                                 strWithoutMtiBitmap[offset+lenoffset:offset+
-                                                     lenoffset+modvalueSize]
-                                 )
-                    self.__check_bit_type_validity(cont, bit_value)
-                    self.__check_bit_data_length(cont, bit_value)
+                    data_size = strWithoutMtiBitmap[offset:offset + lenoffset]
+                    data_value = strWithoutMtiBitmap[
+                        offset + lenoffset:offset + lenoffset + modvalueSize]
+                    bit_value = data_size + data_value
+                    self.__check_bit_type_validity(cont, data_value)
+                    self.__check_bit_data_length(cont, data_value, data_size)
 
                     self.BITMAP_VALUES[cont] = bit_value
 
@@ -1604,12 +1589,12 @@ class ISO8583:
                     else:
                         modvalueSize = valueSize
 
-                    bit_value = (strWithoutMtiBitmap[offset:offset+lenoffset] +
-                                 strWithoutMtiBitmap[offset+lenoffset:offset+
-                                                     lenoffset+modvalueSize]
-                                 )
-                    self.__check_bit_type_validity(cont, bit_value)
-                    self.__check_bit_data_length(cont, bit_value)
+                    data_size = strWithoutMtiBitmap[offset:offset + lenoffset]
+                    data_value = strWithoutMtiBitmap[
+                        offset + lenoffset:offset + lenoffset + modvalueSize]
+                    bit_value = data_size + data_value
+                    self.__check_bit_type_validity(cont, data_value)
+                    self.__check_bit_data_length(cont, data_value, data_size)
 
                     self.BITMAP_VALUES[cont] = bit_value
 
