@@ -817,7 +817,7 @@ class ISO8583:
 
     ################################################################################################
     # Method that receive a ISO8583 ASCII package in the network form and parse it.
-    def __formatValue(self,bit,value):
+    def __formatValue(self, bit, value):
         """Method that formats a value to the appropriate data for the bit or LL or LLL bits
         @param: bit -> bit to be setted
         @param: value -> value to be setted
@@ -869,7 +869,8 @@ class ISO8583:
         data = self.__formatValue(bit, value)
         lenform = self.getBitLenForm(bit)
 
-        self.__checkBitTypeValidity(bit, value)
+        self.__check_bit_type_validity(bit, value)
+        self.__check_bit_data_length(bit, value)
 
         if lenform == 'A':
             self.BITMAP_VALUES[bit] = size.zfill(2).encode() + data
@@ -909,7 +910,8 @@ class ISO8583:
         data = self.__formatValue(bit, value)
         lenform = self.getBitLenForm(bit)
 
-        self.__checkBitTypeValidity(bit, value)
+        self.__check_bit_type_validity(bit, value)
+        self.__check_bit_data_length(bit, value)
 
         if lenform == 'A':
             self.BITMAP_VALUES[bit] = size.zfill(3).encode() + data
@@ -948,7 +950,8 @@ class ISO8583:
         data = self.__formatValue(bit, value)
         lenform = self.getBitLenForm(bit)
 
-        self.__checkBitTypeValidity(bit, value)
+        self.__check_bit_type_validity(bit, value)
+        self.__check_bit_data_length(bit, value)
 
         if lenform == 'A':
             self.BITMAP_VALUES[bit] = size.zfill(6).encode() + data
@@ -981,7 +984,7 @@ class ISO8583:
             raise ValueTooLarge('Error: value up to size! Bit[%s] of type %s limit size = %s' % (
                 bit, self.getBitType(bit), self.getBitLimit(bit)))
 
-        self.__checkBitTypeValidity(bit, value)
+        self.__check_bit_type_validity(bit, value)
 
         data_form = self.getBitFormat(bit)
 
@@ -1018,7 +1021,7 @@ class ISO8583:
             raise ValueTooLarge('Error: value up to size! Bit[%s] of type %s limit size = %s' % (
                 bit, self.getBitType(bit), self.getBitLimit(bit)))
 
-        self.__checkBitTypeValidity(bit, value)
+        self.__check_bit_type_validity(bit, value)
 
         data_form = self.getBitFormat(bit)
 
@@ -1052,7 +1055,7 @@ class ISO8583:
             raise ValueTooLarge('Error: value up to size! Bit[%s] of type %s limit size = %s' % (
                 bit, self.getBitType(bit), self.getBitLimit(bit)))
 
-        self.__checkBitTypeValidity(bit, value)
+        self.__check_bit_type_validity(bit, value)
 
         data_form = self.getBitFormat(bit)
 
@@ -1083,7 +1086,7 @@ class ISO8583:
             raise ValueTooLarge('Error: value up to size! Bit[%s] of type %s limit size = %s' % (
                 bit, self.getBitType(bit), self.getBitLimit(bit)))
 
-        self.__checkBitTypeValidity(bit, value)
+        self.__check_bit_type_validity(bit, value)
 
         data_form = self.getBitFormat(bit)
 
@@ -1146,7 +1149,7 @@ class ISO8583:
             raise ValueTooLarge('Error: value up to size! Bit[%s] of type %s limit size = %s' % (
                 bit, self.getBitType(bit), self.getBitLimit(bit)))
 
-        self.__checkBitTypeValidity(bit, value)
+        self.__check_bit_type_validity(bit, value)
 
         data_form = self.getBitFormat(bit)
 
@@ -1390,12 +1393,12 @@ class ISO8583:
 
     ################################################################################################
 
-    def __checkBitTypeValidity(self, bit, value):
+    def __check_bit_type_validity(self, bit, value):
         """ Verify that a bit's value has the correct type
-            @param: bit -> bit to be validated
-            @param: value -> bit's value as a string
-            @raises: InvalidValueType -> exception with message according to
-                     type error
+            :param int bit: bit to be validated
+            :param str or byte value: bit's value
+            :raises InvalidValueType: exception with message according to
+                    type error
         """
 
         bitType = self.getBitValueType(bit)
@@ -1429,6 +1432,43 @@ class ISO8583:
 
         # No exceptions raised, return
         return True
+
+    def __check_bit_data_length(self, bit, value):
+        """
+        Verify the data size of the data in the LL values, the data should
+        match the size given by the first bits.
+        :param int bit: The bit to validate
+        :param str value: The value of the bit
+        :raises ValueTooLarge: when the value does not match the size
+        """
+        bit_type = self.getBitType(bit)
+        len_type = self.getBitLenForm(bit) # Should be 'A'
+        data_type = self.getBitFormat(bit) # Should be 'A'
+
+        index = None
+
+        if (len_type == 'A') and (data_type == 'A'):
+            # Able to parse the length and data as str
+            if bit_type == 'LL':
+                index = 2
+            elif bit_type == 'LLL':
+                index = 3
+            elif bit_type == 'LLLLLL':
+                index = 6
+
+            if index:
+                # Verify length of the incoming value
+                data_length = int(value[:index])
+                if len(value[index:]) != data_length:
+                    raise ValueTooLarge(
+                        'Error: Bit {bit} has a header size of {size} '
+                        'but a data size of {data_size}'.format(
+                            bit=bit,
+                            size=data_length,
+                            data_size=len(value[index:])))
+
+        return True
+
 
     ################################################################################################
 
@@ -1486,7 +1526,9 @@ class ISO8583:
                                  strWithoutMtiBitmap[offset+lenoffset:offset+
                                                      lenoffset+modvalueSize]
                                  )
-                    self.__checkBitTypeValidity(cont, bit_value)
+                    self.__check_bit_type_validity(cont, bit_value)
+                    self.__check_bit_data_length(cont, bit_value)
+
                     self.BITMAP_VALUES[cont] = bit_value
 
                     if self.DEBUG is True:
@@ -1525,7 +1567,9 @@ class ISO8583:
                                  strWithoutMtiBitmap[offset+lenoffset:offset+
                                                      lenoffset+modvalueSize]
                                  )
-                    self.__checkBitTypeValidity(cont, bit_value)
+                    self.__check_bit_type_validity(cont, bit_value)
+                    self.__check_bit_data_length(cont, bit_value)
+
                     self.BITMAP_VALUES[cont] = bit_value
 
                     if self.DEBUG is True:
@@ -1564,7 +1608,9 @@ class ISO8583:
                                  strWithoutMtiBitmap[offset+lenoffset:offset+
                                                      lenoffset+modvalueSize]
                                  )
-                    self.__checkBitTypeValidity(cont, bit_value)
+                    self.__check_bit_type_validity(cont, bit_value)
+                    self.__check_bit_data_length(cont, bit_value)
+
                     self.BITMAP_VALUES[cont] = bit_value
 
                     if self.DEBUG is True:
@@ -1592,7 +1638,7 @@ class ISO8583:
 
                     bit_value = strWithoutMtiBitmap[offset:modvalueSize + offset]
 
-                    self.__checkBitTypeValidity(cont, bit_value)
+                    self.__check_bit_type_validity(cont, bit_value)
                     self.BITMAP_VALUES[cont] = bit_value
 
                     if self.DEBUG is True:
