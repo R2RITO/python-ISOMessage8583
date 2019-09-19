@@ -10,4 +10,5 @@ setup(
     url='https://github.com/ducminhgd/python-ISOMessage8583',
     packages=['ISO8583'],
     keywords='ISO8583'
+    install_requires=['ebcdic==1.1.1']
 )

@@ -267,7 +267,7 @@ class ISO8583:
     _BITS_VALUE_TYPE[124] = ['124', 'Info Text', 'LLL', 'A', 255, 'ans', 'A']
     _BITS_VALUE_TYPE[125] = [
         '125', 'Network management information', 'LL', 'A', 50, 'ans', 'A']
-    _BITS_VALUE_TYPE[126] = ['126', 'Issuer trace id', 'LL', 'A', 6, 'ans', 'A']
+    _BITS_VALUE_TYPE[126] = ['126', 'Issuer trace id', 'LLL', 'A', 999, 'ans', 'A']
     _BITS_VALUE_TYPE[127] = ['127', 'Reserved for private use', 'LLL', 'A', 999, 'ans', 'A']
     _BITS_VALUE_TYPE[128] = ['128', 'Message authentication code (MAC) field', 'B', '-', 16, 'b', 'A']
 
@@ -1498,8 +1498,12 @@ class ISO8583:
                         print('Size of the message in LL = %s' % valueSize)
 
                     if valueSize > self.getBitLimit(cont):
-                        print('This bit is larger than the specification.')
-                        # raise ValueTooLarge("This bit is larger than the specification!")
+                        print(
+                            "The bit's {} value is larger than "
+                            "the specification.".format(cont))
+                        raise ValueTooLarge(
+                            "The bit's {} value is larger than "
+                            "the specification.".format(cont))
 
                     if self.getBitFormat(cont) == 'P':
                         modvalueSize = self.__getPackedLen(valueSize)
@@ -1540,8 +1544,12 @@ class ISO8583:
                         print('Size of the message in LLL = %s' % valueSize)
 
                     if valueSize > self.getBitLimit(cont):
+                        print(
+                            "The bit's {} value is larger than "
+                            "the specification.".format(cont))
                         raise ValueTooLarge(
-                            "This bit is larger than the specification!")
+                            "The bit's {} value is larger than "
+                            "the specification.".format(cont))
 
                     if self.getBitFormat(cont) == 'P':
                         modvalueSize = self.__getPackedLen(valueSize)
@@ -1581,8 +1589,12 @@ class ISO8583:
                         print('Size of the message in LLLLLL = %s' % valueSize)
 
                     if valueSize > self.getBitLimit(cont):
+                        print(
+                            "The bit's {} value is larger than "
+                            "the specification.".format(cont))
                         raise ValueTooLarge(
-                            "This bit is larger than the specification!")
+                            "The bit's {} value is larger than "
+                            "the specification.".format(cont))
 
                     if self.getBitFormat(cont) == 'P':
                         modvalueSize = self.__getPackedLen(valueSize)
